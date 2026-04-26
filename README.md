@@ -2,7 +2,7 @@
 
 V2EX Safe Reading Helper 是一个用于 V2EX 的 Tampermonkey / Userscript 自动阅读辅助脚本。
 
-当前版本：`5.3.0`
+当前版本：`7.0.0`
 
 ## 安装
 

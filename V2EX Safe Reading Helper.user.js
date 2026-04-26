@@ -7,6 +7,7 @@
 // @match        https://v2ex.com/*
 // @grant        none
 // @run-at       document-idle
+// @license MIT
 // ==/UserScript==
 
 (() => {

@@ -1,132 +1,317 @@
 // ==UserScript==
 // @name         V2EX Safe Reading Helper
 // @namespace    local.v2ex.safe
-// @version      7.0.0
-// @description  V2EX 自动阅读助手 - 从当前帖往前遍历
+// @version      7.0.1
+// @description  V2EX 自动阅读助手 - 菜单控制、隐藏发帖/评论入口、spam 举报附加
 // @match        https://www.v2ex.com/*
 // @match        https://v2ex.com/*
-// @grant        none
+// @grant        GM_addStyle
+// @grant        GM_getValue
+// @grant        GM_registerMenuCommand
+// @grant        GM_setValue
 // @run-at       document-idle
-// @license MIT
+// @license      MIT
 // ==/UserScript==
 
 (() => {
   'use strict';
 
-  const ORIGIN    = location.origin;
+  const ORIGIN = location.origin;
+  const STORAGE_PREFIX = 'v2sr';
   const DELAY_MIN = 10_000;
   const DELAY_MAX = 15_000;
   const LOOK_BACK = 50;
 
-  // 当前页 ID（非帖子页则为 null）
+  const SETTINGS = {
+    autoReadEnabled: 'autoRead.enabled',
+    hideActionsEnabled: 'hideActions.enabled',
+    spamReportEnabled: 'spamReport.enabled',
+  };
+
   const pageId = Number(location.pathname.match(/\/t\/(\d+)/)?.[1]) || null;
-
-  function ss(key, val) {
-    if (val === undefined) { try { return JSON.parse(sessionStorage.getItem(key)); } catch { return null; } }
-    try { sessionStorage.setItem(key, JSON.stringify(val)); } catch {}
-  }
-
-  // 起点：当前页 ID，或上次记录的起点
-  let startId = pageId || ss('v2sr_start');
-  let cursor  = ss('v2sr_cursor') || 0;  // 已走步数
-
-  function nextId() {
-    if (!startId) return null;
-    // 走完 LOOK_BACK 步后重置，以新页面 ID 为起点
-    if (cursor >= LOOK_BACK) {
-      startId = pageId || startId;
-      cursor  = 0;
-      ss('v2sr_start', startId);
-    }
-    cursor++;
-    ss('v2sr_cursor', cursor);
-    return startId - cursor;
-  }
-
   let timer = null;
 
+  const reportUsers = [
+    'Livid',
+    'Kai',
+    'Olivia',
+    'GordianZ',
+    'sparanoid',
+    'drymonfidelia',
+    'sillydaddy',
+  ];
+  const reportText = reportUsers
+    .map((username) => {
+      const url = `https://www.v2ex.com/member/${username}`;
+      return `@[${username}](${url}) (${url})`;
+    })
+    .join(' ');
+
+  function storageKey(key) {
+    return `${STORAGE_PREFIX}:${key}`;
+  }
+
+  function getSetting(key, fallback) {
+    try {
+      if (typeof GM_getValue === 'function') return GM_getValue(key, fallback);
+      const raw = localStorage.getItem(storageKey(key));
+      return raw === null ? fallback : JSON.parse(raw);
+    } catch {
+      return fallback;
+    }
+  }
+
+  function setSetting(key, value) {
+    try {
+      if (typeof GM_setValue === 'function') {
+        GM_setValue(key, value);
+        return;
+      }
+      localStorage.setItem(storageKey(key), JSON.stringify(value));
+    } catch {
+      // Ignore storage failures; defaults will be used on the next load.
+    }
+  }
+
+  function ss(key, value) {
+    const fullKey = storageKey(key);
+    if (value === undefined) {
+      try {
+        return JSON.parse(sessionStorage.getItem(fullKey));
+      } catch {
+        return null;
+      }
+    }
+    try {
+      sessionStorage.setItem(fullKey, JSON.stringify(value));
+    } catch {
+      // Ignore sessionStorage failures for transient reading state.
+    }
+    return value;
+  }
+
+  function addStyle(css) {
+    if (typeof GM_addStyle === 'function') {
+      GM_addStyle(css);
+      return;
+    }
+    const style = document.createElement('style');
+    style.textContent = css;
+    document.head.appendChild(style);
+  }
+
+  function registerMenu(label, callback) {
+    if (typeof GM_registerMenuCommand === 'function') {
+      GM_registerMenuCommand(label, callback);
+    }
+  }
+
+  function toggleLabel(label, enabled) {
+    return enabled ? `✅ ${label}` : label;
+  }
+
+  function registerToggle(label, key, currentValue, onToggle) {
+    registerMenu(toggleLabel(label, currentValue), () => {
+      const nextValue = !currentValue;
+      setSetting(key, nextValue);
+      onToggle?.(nextValue);
+      window.location.reload();
+    });
+  }
+
+  const autoReadEnabled = getSetting(SETTINGS.autoReadEnabled, false) === true;
+  const hideActionsEnabled = getSetting(SETTINGS.hideActionsEnabled, false) === true;
+  const spamReportEnabled = getSetting(SETTINGS.spamReportEnabled, true) === true;
+
+  registerToggle('自动阅读', SETTINGS.autoReadEnabled, autoReadEnabled, (enabled) => {
+    if (enabled) resetStartFromCurrentPage();
+    else clearTimeout(timer);
+  });
+  registerMenu('下一帖', () => {
+    clearTimeout(timer);
+    next();
+  });
+  registerMenu('重置阅读起点', () => {
+    resetStartFromCurrentPage();
+    window.location.reload();
+  });
+  registerToggle('屏蔽发帖/评论入口', SETTINGS.hideActionsEnabled, hideActionsEnabled);
+  registerToggle('Spam 举报附加', SETTINGS.spamReportEnabled, spamReportEnabled);
+
+  function resetStartFromCurrentPage() {
+    if (pageId) ss('start', pageId);
+    ss('cursor', 0);
+  }
+
+  const AutoReadModule = {
+    async init() {
+      if (!ss('start')) {
+        if (pageId) {
+          ss('start', pageId);
+          ss('cursor', 0);
+        } else {
+          await this.ensureLatestStart();
+        }
+      }
+
+      if (autoReadEnabled) this.schedule();
+    },
+
+    async ensureLatestStart() {
+      const startId = await this.fetchLatestTopicId();
+      if (startId) {
+        ss('start', startId);
+        ss('cursor', 0);
+      }
+    },
+
+    async fetchLatestTopicId() {
+      try {
+        const response = await fetch(`${ORIGIN}/api/topics/latest.json`, {
+          credentials: 'same-origin',
+          headers: { Accept: 'application/json' },
+        });
+        if (!response.ok) return null;
+        const topics = await response.json();
+        return Array.isArray(topics) && topics.length
+          ? Math.max(...topics.map((topic) => Number(topic.id)).filter(Number.isFinite))
+          : null;
+      } catch {
+        return null;
+      }
+    },
+
+    getNextId() {
+      let startId = Number(ss('start')) || pageId || null;
+      let cursor = Number(ss('cursor')) || 0;
+      if (!startId) return null;
+
+      if (cursor >= LOOK_BACK) {
+        startId = pageId || startId;
+        cursor = 0;
+        ss('start', startId);
+      }
+
+      cursor += 1;
+      ss('cursor', cursor);
+      return startId - cursor;
+    },
+
+    schedule() {
+      clearTimeout(timer);
+      const ms = DELAY_MIN + Math.random() * (DELAY_MAX - DELAY_MIN);
+      timer = setTimeout(() => next(), ms);
+    },
+  };
+
   function next() {
-    const id = nextId();
-    if (!id || id <= 0) { setStatus('已到底，重置'); cursor = 0; ss('v2sr_cursor', 0); next(); return; }
-    ss('v2sr_start', startId);
+    let id = AutoReadModule.getNextId();
+    if (!id || id <= 0) {
+      ss('cursor', 0);
+      id = AutoReadModule.getNextId();
+    }
+    if (!id || id <= 0) return;
     location.href = `${ORIGIN}/t/${id}`;
   }
 
-  function schedule() {
-    const ms = DELAY_MIN + Math.random() * (DELAY_MAX - DELAY_MIN);
-    const target = Date.now() + ms;
-    const tick = () => {
-      const rem = Math.ceil((target - Date.now()) / 1000);
-      setCD(rem);
-      timer = rem > 0 ? setTimeout(tick, 500) : setTimeout(next, 0);
-    };
-    tick();
-  }
+  const HideActionsModule = {
+    selectors: [
+      '#pro-campaign-container',
+      '#Rightbar > div.box:nth-child(4) > div.cell:first-child',
+      '#Rightbar a[href="/new"]',
+      '#Rightbar a[href^="/new/"]',
+      'a[href="/new"]',
+      'a[href^="/new/"]',
+      '#reply-box',
+      '#reply-box input[type="submit"]',
+      '#reply-box input[type="button"]',
+      '#reply-box button[type="submit"]',
+    ],
+    observer: null,
+    timer: 0,
 
-  function start() { ss('v2sr_run', 1); setRunning(true); schedule(); setStatus('自动阅读中…'); }
-  function pause() { ss('v2sr_run', 0); clearTimeout(timer); setRunning(false); setCD(0); setStatus('已暂停。'); }
+    init() {
+      this.injectStyle();
+      this.hideSoon(0);
+      this.observer = new MutationObserver(() => this.hideSoon(120));
+      this.observer.observe(document.body || document.documentElement, {
+        childList: true,
+        subtree: true,
+      });
+    },
 
-  // ── UI ────────────────────────────────────────────────────────
-  function el(tag, css, text) {
-    const e = document.createElement(tag);
-    if (css)  e.style.cssText = css;
-    if (text) e.textContent = text;
-    return e;
-  }
-  function btn(label, bg) {
-    return el('button',
-      `background:${bg};color:#fff;border:none;padding:4px 10px;` +
-      `border-radius:6px;cursor:pointer;font-size:12px;line-height:1.4;`, label);
-  }
+    injectStyle() {
+      addStyle(`
+        ${this.selectors.join(',\n        ')} {
+          display: none !important;
+        }
+      `);
+    },
 
-  const panel    = el('div',
-    'position:fixed;right:16px;bottom:16px;z-index:999999;background:#111;color:#fff;' +
-    'padding:10px 14px;border-radius:10px;font-size:13px;max-width:260px;' +
-    'box-shadow:0 4px 16px rgba(0,0,0,.35);font-family:system-ui,sans-serif;');
-  const statsEl  = el('span', 'font-size:11px;color:#aaa;');
-  const cdEl     = el('div',  'font-size:22px;font-weight:700;margin-top:8px;display:none;');
-  const statusEl = el('div',  'margin-top:5px;color:#aaa;font-size:11px;min-height:14px;');
+    hideSoon(delay) {
+      clearTimeout(this.timer);
+      this.timer = setTimeout(() => this.hideNow(), delay);
+    },
 
-  const startBtn = btn('▶ 开始',   '#1a73e8');
-  const pauseBtn = btn('⏸ 暂停',   '#555');
-  const nextBtn  = btn('⏭ 下一帖', '#2d7a2d');
+    hideNow() {
+      for (const selector of this.selectors) {
+        document.querySelectorAll(selector).forEach((node) => {
+          node.style.setProperty('display', 'none', 'important');
+        });
+      }
+    },
+  };
 
-  const header = el('div', 'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;');
-  header.append(el('span', 'font-weight:700;font-size:14px;', 'V2EX 阅读助手'), statsEl);
+  const SpamReportModule = {
+    init() {
+      document.addEventListener('submit', (event) => this.onSubmit(event), true);
+      document.addEventListener('click', (event) => this.onClick(event), true);
+      document.addEventListener('keydown', (event) => this.onKeydown(event), true);
+    },
 
-  const controls = el('div', 'display:flex;gap:6px;');
-  controls.append(startBtn, pauseBtn, nextBtn);
-  panel.append(header, controls, cdEl, statusEl);
-  document.body.appendChild(panel);
+    onSubmit(event) {
+      this.applyToForm(event.target);
+    },
 
-  function setStatus(t)  { statusEl.textContent = t; }
-  function setCD(sec)    { cdEl.style.display = sec > 0 ? 'block' : 'none'; cdEl.textContent = sec > 0 ? `⏱ ${sec}s` : ''; }
-  function updateStats() { statsEl.textContent = `${cursor}/${LOOK_BACK} | ID ${startId ? startId - cursor : '?'}`; }
-  function setRunning(v) { startBtn.disabled = v; pauseBtn.disabled = !v; }
+    onClick(event) {
+      const button = event.target.closest?.('input[type="submit"], button[type="submit"], button, input[type="button"]');
+      if (!button) return;
+      const form = button.form || button.closest?.('form');
+      if (form) this.applyToForm(form);
+    },
 
-  startBtn.onclick = start;
-  pauseBtn.onclick = pause;
-  nextBtn.onclick  = () => { clearTimeout(timer); next(); };
+    onKeydown(event) {
+      if (!(event.ctrlKey || event.metaKey) || event.key !== 'Enter') return;
+      const form = event.target.closest?.('form');
+      if (form) this.applyToForm(form);
+    },
 
-  // 初始化：没有起点 ID 时拉一次 API 取最新 ID
-  async function init() {
-    if (!startId) {
-      setStatus('获取最新帖子 ID…');
-      const topics = await fetch(`${ORIGIN}/api/topics/latest.json`, { credentials: 'same-origin' })
-        .then(r => r.ok ? r.json() : []).catch(() => []);
-      startId = topics.length ? Math.max(...topics.map(t => Number(t.id))) : null;
-      ss('v2sr_start', startId);
-    }
-    updateStats();
-    if (ss('v2sr_run')) {
-      setRunning(true);
-      setStatus('自动阅读中…');
-      schedule();
-    } else {
-      setRunning(false);
-      setStatus(startId ? `起点 ID ${startId}，点击 ▶ 开始。` : '获取失败，请刷新。');
-    }
-  }
+    applyToForm(form) {
+      if (!(form instanceof HTMLFormElement)) return;
+      const textarea = this.findTextarea(form);
+      if (!textarea) return;
+      this.applyToTextarea(textarea);
+    },
 
-  init();
+    findTextarea(form) {
+      return (
+        form.querySelector('textarea[name="content"]') ||
+        form.querySelector('#reply_content') ||
+        form.querySelector('textarea')
+      );
+    },
+
+    applyToTextarea(textarea) {
+      const value = textarea.value || '';
+      if (!/^spam$/i.test(value.trim())) return;
+      if (value.includes('https://www.v2ex.com/member/Livid')) return;
+      textarea.value = `${value.trim()}\n\n${reportText}`;
+      textarea.dispatchEvent(new Event('input', { bubbles: true }));
+      textarea.dispatchEvent(new Event('change', { bubbles: true }));
+    },
+  };
+
+  if (hideActionsEnabled) HideActionsModule.init();
+  if (spamReportEnabled) SpamReportModule.init();
+  AutoReadModule.init();
 })();

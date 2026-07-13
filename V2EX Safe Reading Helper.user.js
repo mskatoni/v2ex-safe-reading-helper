@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         V2EX Safe Reading Helper
 // @namespace    local.v2ex.safe
-// @version      7.0.1
+// @version      7.0.2
 // @description  V2EX 自动阅读助手 - 菜单控制、隐藏发帖/评论入口、spam 举报附加
 // @match        https://www.v2ex.com/*
 // @match        https://v2ex.com/*
@@ -40,12 +40,7 @@
     'drymonfidelia',
     'sillydaddy',
   ];
-  const reportText = reportUsers
-    .map((username) => {
-      const url = `https://www.v2ex.com/member/${username}`;
-      return `@[${username}](${url}) (${url})`;
-    })
-    .join(' ');
+  const reportText = reportUsers.map((username) => `@${username}`).join(' ');
 
   function storageKey(key) {
     return `${STORAGE_PREFIX}:${key}`;
@@ -304,7 +299,6 @@
     applyToTextarea(textarea) {
       const value = textarea.value || '';
       if (!/^spam$/i.test(value.trim())) return;
-      if (value.includes('https://www.v2ex.com/member/Livid')) return;
       textarea.value = `${value.trim()}\n\n${reportText}`;
       textarea.dispatchEvent(new Event('input', { bubbles: true }));
       textarea.dispatchEvent(new Event('change', { bubbles: true }));

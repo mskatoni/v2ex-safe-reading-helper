@@ -2,7 +2,7 @@
 
 V2EX Safe Reading Helper 是一个用于 V2EX 的 Tampermonkey / Userscript 本地辅助脚本。
 
-当前版本：`7.0.1`
+当前版本：`7.0.2`
 
 ## 安装
 
@@ -24,7 +24,7 @@ V2EX Safe Reading Helper 是一个用于 V2EX 的 Tampermonkey / Userscript 本�
 - 首次启动时可从 `/api/topics/latest.json` 获取最新帖子 ID 作为起点。
 - 支持菜单命令：自动阅读、下一帖、重置阅读起点。
 - 可选隐藏发帖入口、推广容器、右侧发帖提示和评论区。
-- 可选 spam 举报附加：评论内容只有 `spam` 时，提交前自动附加指定 V2EX 成员链接。
+- 可选 spam 举报附加：评论内容只有 `spam` 时，提交前自动附加指定 V2EX 成员的简短 `@用户名`。
 
 ## 菜单项
 
@@ -34,7 +34,7 @@ V2EX Safe Reading Helper 是一个用于 V2EX 的 Tampermonkey / Userscript 本�
 | 下一帖 | 一次性命令 | 不适用 | 立即跳转下一帖 |
 | 重置阅读起点 | 一次性命令 | 不适用 | 将当前帖子 ID 设为新的遍历起点 |
 | 屏蔽发帖/评论入口 | 开关 | 关闭 | 隐藏发帖按钮、推广容器、右侧发帖提示和 `#reply-box` |
-| Spam 举报附加 | 开关 | 开启 | 当评论框只输入 `spam` 时，提交前自动附加成员链接 |
+| Spam 举报附加 | 开关 | 开启 | 当评论框只输入 `spam` 时，提交前自动附加成员的 `@用户名` |
 
 ## Spam 举报附加
 
@@ -44,16 +44,10 @@ V2EX Safe Reading Helper 是一个用于 V2EX 的 Tampermonkey / Userscript 本�
 spam
 ```
 
-脚本会在提交前自动追加这些成员链接：
+脚本会在提交前自动追加这些成员的 `@用户名`：
 
 ```text
-@[Livid](https://www.v2ex.com/member/Livid) (https://www.v2ex.com/member/Livid)
-@[Kai](https://www.v2ex.com/member/Kai) (https://www.v2ex.com/member/Kai)
-@[Olivia](https://www.v2ex.com/member/Olivia) (https://www.v2ex.com/member/Olivia)
-@[GordianZ](https://www.v2ex.com/member/GordianZ) (https://www.v2ex.com/member/GordianZ)
-@[sparanoid](https://www.v2ex.com/member/sparanoid) (https://www.v2ex.com/member/sparanoid)
-@[drymonfidelia](https://www.v2ex.com/member/drymonfidelia) (https://www.v2ex.com/member/drymonfidelia)
-@[sillydaddy](https://www.v2ex.com/member/sillydaddy) (https://www.v2ex.com/member/sillydaddy)
+@Livid @Kai @Olivia @GordianZ @sparanoid @drymonfidelia @sillydaddy
 ```
 
 该功能只在提交前检测精确内容 `spam`，不会修改其他正常回复。

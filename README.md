@@ -2,7 +2,7 @@
 
 V2EX Safe Reading Helper 是一个用于 V2EX 的 Tampermonkey / Userscript 本地辅助脚本。
 
-当前版本：`7.0.2`
+当前版本：`7.0.3`
 
 ## 安装
 
@@ -22,7 +22,7 @@ V2EX Safe Reading Helper 是一个用于 V2EX 的 Tampermonkey / Userscript 本�
 - 使用 Tampermonkey 菜单控制，不再显示右下角 UI 面板。
 - 自动阅读从当前帖子 ID 往前遍历，每轮最多 50 个。
 - 首次启动时可从 `/api/topics/latest.json` 获取最新帖子 ID 作为起点。
-- 支持菜单命令：自动阅读、下一帖、重置阅读起点。
+- 支持菜单命令：自动阅读、下一帖、重置阅读起点、问题反馈。
 - 可选隐藏发帖入口、推广容器、右侧发帖提示和评论区。
 - 可选 spam 举报附加：评论内容只有 `spam` 时，提交前自动附加指定 V2EX 成员的简短 `@用户名`。
 
@@ -35,6 +35,7 @@ V2EX Safe Reading Helper 是一个用于 V2EX 的 Tampermonkey / Userscript 本�
 | 重置阅读起点 | 一次性命令 | 不适用 | 将当前帖子 ID 设为新的遍历起点 |
 | 屏蔽发帖/评论入口 | 开关 | 关闭 | 隐藏发帖按钮、推广容器、右侧发帖提示和 `#reply-box` |
 | Spam 举报附加 | 开关 | 开启 | 当评论框只输入 `spam` 时，提交前自动附加成员的 `@用户名` |
+| 问题反馈 | 一次性命令 | 不适用 | 在新标签页打开仓库的 GitHub Issues |
 
 ## Spam 举报附加
 

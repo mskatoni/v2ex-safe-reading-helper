@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         V2EX Safe Reading Helper
 // @namespace    local.v2ex.safe
-// @version      7.0.2
+// @version      7.0.3
 // @description  V2EX 自动阅读助手 - 菜单控制、隐藏发帖/评论入口、spam 举报附加
 // @match        https://www.v2ex.com/*
 // @match        https://v2ex.com/*
@@ -21,6 +21,7 @@
   const DELAY_MIN = 10_000;
   const DELAY_MAX = 15_000;
   const LOOK_BACK = 50;
+  const ISSUES_URL = 'https://github.com/mskatoni/v2ex-safe-reading-helper/issues';
 
   const SETTINGS = {
     autoReadEnabled: 'autoRead.enabled',
@@ -132,6 +133,9 @@
   });
   registerToggle('屏蔽发帖/评论入口', SETTINGS.hideActionsEnabled, hideActionsEnabled);
   registerToggle('Spam 举报附加', SETTINGS.spamReportEnabled, spamReportEnabled);
+  registerMenu('问题反馈', () => {
+    window.open(ISSUES_URL, '_blank', 'noopener,noreferrer');
+  });
 
   function resetStartFromCurrentPage() {
     if (pageId) ss('start', pageId);
